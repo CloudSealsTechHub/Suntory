@@ -1,0 +1,35 @@
+[
+
+
+  {
+    "Suntory_ID": 12356,
+    
+    "Username": "Tom",
+    "ExternalID": {
+      "ExternalID_1": "E001",
+      "ExternalIDInteraction1": 1,
+      "ExternalIDInteractionLastInteractionDate1": "02-06-2023"
+    },
+
+    "Email": {
+      "Email_1": "tom.doe@example.com",
+      "EmailInteraction1": 2,
+      "EmailLastInteractionDate1": "02-5-2023",
+      "Email_2": "tom1.doe@example.com",
+      "EmailInteraction2": 1,
+      "EmailLastInteractionDate2": "03-6-2023"
+
+    },
+    "PhoneNumber": {
+      "PhoneNumber_1": "+91 21098765438",
+      "PhoneInteraction1":2,
+      "PHoneLastInteractionDate1": "04-09-2023",
+      "PhoneNumber_2": "+91 21098765439",
+      "PhoneInteraction2": 2,
+      "PHoneLastInteractionDate2": "05-04-2023"
+
+    }
+  }
+  
+
+]
