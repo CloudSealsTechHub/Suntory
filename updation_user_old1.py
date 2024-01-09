@@ -28,18 +28,22 @@ def extract_valid_phone_numbers(phone):
 
 # 3. Extract content based on query
 def recursive_search(document, desired_value):
-    
     for key, value in document.items():
         if isinstance(value, dict):
             # Recursively search nested dictionaries
-            for key1,value1 in value.items():
-                if value1==desired_value:
-                    return True                
+            if recursive_search(value, desired_value):
+                return True,key
         elif value == desired_value:
-            return True
-    return False
+            return True,key
+    return False,False
 
 # 4. Extract key based on value from dictionary
+def get_key_by_value1(dictionary, value):
+    for key, val in dictionary.items():
+        if val == value:
+            return key
+    # If the value is not found, you can return a default value or raise an exception
+    return None
 def get_key_by_value(dictionary, value):
     key1=[]
     for key, val in dictionary.items():
@@ -47,6 +51,53 @@ def get_key_by_value(dictionary, value):
             key1.append(key)
     # If the value is not found, you can return a default value or raise an exception
     return key1
+
+def check_existence1(data):
+    try:
+        # Connect to MongoDB
+        client = MongoClient('mongodb://localhost:27017/')
+        db = client['suntory_db']
+        collection = db['users_data']
+
+        # Check if each identifier exists in the collection
+        results = {}
+        for key in data:
+            value = data[key]
+            user = collection.find_one({key: value})
+            if value and user:
+                results[f"{key}_exist"] = "Yes"
+                results[f"{key}_suntory_id"] = str(user.get("suntory_id", ""))
+
+            else:
+                results[f"{key}_exist"] = "No"
+                results[f"{key}_suntory_id"] = ""
+
+            # If phone_number and e_id have the same suntory_id and email_id_suntory is blank, update email_id_suntory
+        if results.get("phone_number_exist") == "Yes" and results.get("e_id_exist") == "Yes" and results.get("email_id_exist") == "No":
+            query = {
+                        "phone_number": data.get("phone_number"),
+                        "e_id": data.get("e_id"),
+                        "email_id_suntory": ""
+            }
+
+            user_to_update = collection.find_one(query)
+
+            if user_to_update:
+                        # Update the email_id_suntory in the record
+                update_result = collection.update_one(
+                            {"_id": user_to_update["_id"]},
+                            {"$set": {"email_id_suntory": data.get("email_id")}}
+                )
+
+                if update_result.modified_count > 0:
+                    results["email_id_update"] = "Yes"
+                else:
+                    results["email_id_update"] = "No"
+        return jsonify(results)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+
 
 def check_existence(data):
     try:
@@ -59,23 +110,41 @@ def check_existence(data):
         results = {}
         query ={}
         missed_data=[]
-        ## loop for each input entry
+        #for loop for each and every entry input  
         for key in data:
             value1 = data[key]
-            matching_documents = [document for document in collection.find() if recursive_search(document, value1)==True]
-            if len(matching_documents) == 0:
-                results[f"{key}_exist"] = "No"
-                results[f"{key}_suntory_id"] = ""
-                missed_data.append(key)
-            elif len(matching_documents) == 1:
-                results[f"{key}_exist"] = "Yes"
-                results[f"{key}_suntory_id"] = str(matching_documents[0].get("suntory_id", ""))
-                result_key = get_key_by_value(matching_documents[0][key], data.get(key))
-                query[key+"."+result_key[0]]=data.get(key)
-            else:
-                return {"Error":"Input entires matches with more than one suntory IDs"}
-        print(missed_data)    
-        # if any input entry matches with exsted database need to addmissed data to existing sutory ID
+            matching_documents = [document for document in collection.find() if recursive_search(document, value1)]
+             
+            for i in range(len(matching_documents)):
+                if value1 in list(matching_documents[i][key].values()):
+                    results[f"{key}_exist"] = "Yes"
+                    results[f"{key}_suntory_id"] = str(matching_documents[i].get("suntory_id", ""))
+                    result_key = get_key_by_value(matching_documents[i][key], data.get(key))
+                    query[key+"."+result_key[0]]=data.get(key)
+                    break
+
+                else:
+                    results[f"{key}_exist"] = "No"
+                    results[f"{key}_suntory_id"] = ""
+
+           # If phone_number and e_id have the same suntory_id and email_id_suntory is blank, update email_id_suntory
+        missed_data=[]
+
+        if results.get("PhoneNumber_exist") == "No":
+
+            missed_data.append("PhoneNumber")
+
+        if results.get("ExternalID_exist") == "No":
+
+            missed_data.append('ExternalID')
+
+        if results.get("Email_exist") == "No":
+
+            missed_data.append('Email')
+
+        print(len(missed_data))
+
+
         if len(missed_data)<3:    
             user_to_update = collection.find_one(query)
 
@@ -83,7 +152,7 @@ def check_existence(data):
             for i in missed_data:
                 if i=="Email":
                     if "is a valid email address" in is_valid_email(data['Email']):
-                        number = int(len(user_to_update['Email'])/3)+1
+                        number = int(len(user_to_update['PhoneNumber'])/3)+1
                         missed_data1.append({"$set": {i+'.'+i+'_'+str(number): data.get(i)}})
                         missed_data1.append({"$set": {i+'.'+i+"Interaction"+str(number): 1}})
                         missed_data1.append({"$set": {i+'.'+i+"LastInteractionDate"+str(number): today_date.strftime("%Y-%m-%d")}})
@@ -97,8 +166,8 @@ def check_existence(data):
                         missed_data1.append({"$set": {i+'.'+i+"LastInteractionDate"+str(number): today_date.strftime("%Y-%m-%d")}})
                     else:
                         continue
-                else:
-                    number = int(len(user_to_update['ExternalID'])/3)+1
+                else:# i=="Email" and "is a valid email address" in is_valid_email(data['Email']):
+                    number = int(len(user_to_update['PhoneNumber'])/3)+1
                     missed_data1.append({"$set": {i+'.'+i+'_'+str(number): data.get(i)}})
                     missed_data1.append({"$set": {i+'.'+i+"Interaction"+str(number): 1}})
                     missed_data1.append({"$set": {i+'.'+i+"LastInteractionDate"+str(number): today_date.strftime("%Y-%m-%d")}})
@@ -145,7 +214,6 @@ def check_existence(data):
                 results["email_id_update"] = "Yes"
             else:
                 results["email_id_update"] = "No"
-        # if no entry match with existing database
         else:
             missed_data1={'Suntory_ID':" ",
                           "Username":" ",
@@ -179,6 +247,23 @@ def check_existence(data):
                     missed_data1[i][i+"Interaction"+str(number)]= 1
                     missed_data1[i][i+"LastInteractionDate"+str(number)]= today_date.strftime("%Y-%m-%d")
 
+            for i in query:
+                if "Email" in i:
+                    if "is a valid email address" in is_valid_email(data['Email']):
+                        missed_data1[i[:-2]][i[:-2]+"Interaction"+str(i[-1])]= 1
+                        missed_data1[i[:-2]][i[:-2]+"LastInteractionDate"+str(i[-1])]= today_date.strftime("%Y-%m-%d")
+                    else:
+                        continue
+                elif "PhoneNumber" in i:
+                    if"is a valid PhoneNumber" in extract_valid_phone_numbers(data['PhoneNumber']):
+                        missed_data1[i[:-2]][i[:-2]+"Interaction"+str(i[-1])]= 1
+                        missed_data1[i[:-2]][i[:-2]+"LastInteractionDate"+str(i[-1])]= today_date.strftime("%Y-%m-%d")
+                    else:
+                        continue
+                else:
+                    missed_data1[i[:-2]][i[:-2]+"Interaction"+str(i[-1])]= 1
+                    missed_data1[i[:-2]][i[:-2]+"LastInteractionDate"+str(i[-1])]= today_date.strftime("%Y-%m-%d")
+
             update_result = collection.insert_one(missed_data1)
             if "is a valid email address" in is_valid_email(data['Email']):
                 email_res = missed_data1['Email']['Email_1']
@@ -199,7 +284,6 @@ def check_existence(data):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-    
 app = Flask(__name__)    
     
 @app.route('/check_existence', methods=['POST'])
@@ -213,4 +297,4 @@ def check_existence_endpoint():
 
 
 if __name__ == '__main__':
-    app.run("127.0.0.1", 5009)
+    app.run("127.0.0.1", 5008)
